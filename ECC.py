@@ -53,7 +53,7 @@ class ECC():
         x = self.k * m
         for  j in range(self.k):
             f = self.large_power_mod((pow(x, 3) + self.a * x + self.b),1, self.p) #x^3 + ax + b (mod p)
-            y = self.large_power_mod(f, (self.p + 1)//4, self.p) # y
+            y = self.large_power_mod(f, (self.p //4) + 1, self.p) # y
             if (f == self.large_power_mod(y, 2, self.p)):
                 char_point = [x, y]
                 break
@@ -86,6 +86,18 @@ class ECC():
         return decrypted_text
 
 ###↑加解密模块 ↓公共函数+运算定义模块
+    def large_power_mod(self, base, exponent, modulus): #快速模幂
+        result = 1
+        base = base % modulus
+
+        while exponent > 0:
+            if exponent % 2 == 1:
+                result = (result * base) % modulus
+            exponent = exponent // 2
+            base = (base * base) % modulus
+
+        return result
+    
     def extended_gcd(self, a, b): #扩展欧几里得 a为p，b为value 求值的逆元
         if b == 0:
             return 1, 0, a
@@ -155,18 +167,6 @@ class ECC():
             if(self.get_InversePoint(temp) ==point):
                 return k + 1
             k += 1
-
-    def large_power_mod(self, base, exponent, modulus): #快速模幂
-        result = 1
-        base = base % modulus
-
-        while exponent > 0:
-            if exponent % 2 == 1:
-                result = (result * base) % modulus
-            exponent = exponent // 2
-            base = (base * base) % modulus
-
-        return result
     
     def read_file(self): #读取明文
         file_path = 'plain_text.txt'  
