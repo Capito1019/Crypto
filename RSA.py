@@ -1,4 +1,5 @@
 import random
+import math
 import sys
 import time
 
@@ -103,12 +104,71 @@ class RSA():
         num = num.to_bytes(length = len1, byteorder = 'little', signed = False)
         ascii_plain = num.decode('utf-8')
         return ascii_plain
+
+class MD5():
+    def __init__(self):
+        self.A = 0x67452301
+        self.B = 0xEFCDAB89
+        self.C = 0x98BADCFE
+        self.D = 0x10325476
+        # 定义MD5算法中的循环函数
+        self.F = lambda x, y, z: (x & y) | (~x & z)
+        self.G = lambda x, y, z: (x & z) | (y & ~z)
+        self.H = lambda x, y, z: x ^ y ^ z
+        self.I = lambda x, y, z: y ^ (x | ~z)
+        self.k =  [math.floor(abs(math.sin(k+1)) * pow(2,32)) for k in range(64)] #常量k[i]
+
+    shift_r = [7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
+               5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
+               4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
+               6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21]
+
+    def padding(self, text): #填充
+        bit_Text = bytearray(text.encode('utf-8'))
+        text_length = (8 * len(bit_Text)) & 0xffffffffffffffff
+        bit_Text.append(0x80)
+        while len(bit_Text) % 64 != 56:
+            bit_Text.append(0x00)
+        bit_Text += text_length.to_bytes(8, 'little')
+        return bit_Text
+
+    def hash_solver(self, bit_Text):
+        for i in range(0, len(bit_Text), 64): #每64字节为一块chunk进行散列
+            chunk = bit_Text[i: i + 64] #每4字节为一个子分组，共16个子分组 w[k] = chunk[4k, 4k+3]
+            a,b,c,d = self.A, self.B, self.C, self.D #初始化缓冲区
+            for j in range(64): #每轮执行16次，4轮分别用F、G、H、I函数
+                if j < 16:
+                    f = self.F(b, c, d)
+                    g = j
+                if 16 <= j < 32:
+                    f = self.G(b, c, d)
+                    g = (5 * j + 1) % 16
+                if 32 <= j < 48:
+                    f = self.H(b, c, d)
+                    g = (3 * j + 5) % 16
+                if 48<= j < 64:
+                    f = self.I(b, c, d)
+                    g = (7 * j) % 16
+                d_temp = d
+                d = c
+                c = b
+                b = (b + self.left_rotate((a + f + self.k[j] + int.from_bytes(chunk[4 * g:4 * g + 4], 'little')), self.shift_r[j]))  & 0xffffffff
+                a = d_temp
+            self.A = (self.A + a) & 0xFFFFFFFF
+            self.B = (self.B + b) & 0xFFFFFFFF
+            self.C = (self.C + c) & 0xFFFFFFFF
+            self.D = (self.D + d) & 0xFFFFFFFF
+        return self.A.to_bytes(4, 'little') + self.B.to_bytes(4, 'little') + self.C.to_bytes(4, 'little') + self.D.to_bytes(4, 'little')
+    ###散列函数↑ 公共函数↓
+    def left_rotate(self, x, n):
+        x = x & 0xffffffff 
+        return (x << n)| (x >> (32 - n)) #循环左移n位    
     
 if __name__ == "__main__":
     rsa = RSA()
     plain_string = rsa.read_file()
-    plain_char = rsa.ascii_toBigNum(plain_string) #返回字符串长度与数字
     ####↑读取明文
+    flag = eval(input("输入0进行明文加解密; 输入1进行数字签名与验证"))
     chose = eval(input("输入'0'使用随机密钥加解密；输入'1'使用外部密钥加解密"))
     if chose == 0:
         time1 = time.time()
@@ -127,11 +187,25 @@ if __name__ == "__main__":
         private_str = input("请输入私钥,以逗号区分")
         private_Key = private_str.split(sep=',')
         private_Key = [int(char) for char in private_Key]
-    encrypted_char = rsa.encrypto(public_Key, plain_char)
-    print("加密后密文为:",encrypted_char)
-    decrypted_char = rsa.decrypto(private_Key, encrypted_char)
-    decrypted_char = rsa.bigNum_toAscii(decrypted_char)
-    print("解密后明文为:" ,decrypted_char)
+    if flag == 0:
+        plain_char = rsa.ascii_toBigNum(plain_string) #返回数字
+        encrypted_char = rsa.encrypto(public_Key, plain_char)
+        print("加密后密文为:",encrypted_char)
+        decrypted_char = rsa.decrypto(private_Key, encrypted_char)
+        decrypted_char = rsa.bigNum_toAscii(decrypted_char)
+        print("解密后明文为:" ,decrypted_char)
+    if flag == 1:
+        md5 = MD5()
+        bit_text = md5.padding(plain_string) #对消息m进行填充
+        hash_text = md5.hash_solver(bit_text) #产生消息m的摘要
+        hash_int = int.from_bytes(hash_text, byteorder='little', signed = False) #摘要从字节串转为大数
+        encrypted_hash = rsa.encrypto(private_Key, hash_int) #对摘要进行私钥签名
+        print("签名后摘要为:",encrypted_hash)
+        decrypted_hash = rsa.decrypto(public_Key, encrypted_hash) #对签名进行公钥验签
+        print("验签后摘要为:",hex(decrypted_hash))
+        if decrypted_hash == hash_int:
+            print("摘要与签名验签值相等, 验证签名成功！")
+        
     input("输入<ENTER>结束程序")
 
 
